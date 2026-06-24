@@ -1,2 +1,2 @@
-# ESGF-OpenAPI
+# ESGF-search-OpenAPI
 OpenAPI specification for ESGF nodes
