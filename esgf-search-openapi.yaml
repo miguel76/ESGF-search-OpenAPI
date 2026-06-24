@@ -1,0 +1,836 @@
+openapi: 3.0.3
+
+info:
+  title: ESGF Search RESTful API
+  version: "4.18.0"
+  description: |
+    The **Earth System Grid Federation (ESGF) Search RESTful API** provides programmatic
+    access to climate data and metadata distributed across ESGF Index Nodes worldwide
+    (e.g., CEDA/UK, LLNL/US, DKRZ/DE).
+
+    ## How It Works
+
+    The search service exposes a RESTful endpoint that accepts keyword and facet
+    parameters to query the underlying Apache Solr search index. Because of the
+    distributed capabilities of ESGF search, the URL at **any** Index Node can be
+    used to query that node alone, or all nodes in the federation simultaneously.
+
+    ## Record Types
+
+    ESGF organises climate data into three record types:
+    - **Dataset** – a logical collection of files (default search target)
+    - **File** – an individual data file (e.g. NetCDF)
+    - **Aggregation** – an OPeNDAP aggregation of files
+
+    ## Parameter Conventions
+
+    - All parameter values **must be URL-encoded**.
+    - Multiple values for the **same** facet are combined with logical **OR**.
+    - Multiple values for **different** facets are combined with logical **AND**.
+    - Negative facets use the `!=` operator (expressed as `facetName!=value` in query strings).
+    - The `query` parameter follows **Apache Lucene** query syntax.
+
+    ## Notable ESGF Index Nodes
+
+    | Node | Base URL |
+    |------|----------|
+    | LLNL (US) | `https://esgf-node.llnl.gov/esg-search` |
+    | CEDA (UK) | `https://esgf.ceda.ac.uk/esg-search` |
+    | DKRZ (DE) | `https://esgf-data.dkrz.de/esg-search` |
+    | NCI (AU)  | `https://esgf.nci.org.au/esg-search` |
+    | IPSL (FR) | `https://esgf-node.ipsl.upmc.fr/esg-search` |
+
+  contact:
+    name: ESGF
+    url: https://esgf.github.io/esg-search/
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+externalDocs:
+  description: Official ESGF Search RESTful API documentation
+  url: https://esgf.github.io/esg-search/ESGF_Search_RESTful_API.html
+
+servers:
+  - url: https://esgf-node.llnl.gov/esg-search
+    description: LLNL Index Node (US – Lawrence Livermore National Laboratory)
+  - url: https://esgf.ceda.ac.uk/esg-search
+    description: CEDA Index Node (UK – Centre for Environmental Data Analysis)
+  - url: https://esgf-data.dkrz.de/esg-search
+    description: DKRZ Index Node (DE – Deutsches Klimarechenzentrum)
+  - url: https://esgf.nci.org.au/esg-search
+    description: NCI Index Node (AU – National Computational Infrastructure)
+  - url: https://esgf-node.ipsl.upmc.fr/esg-search
+    description: IPSL Index Node (FR – Institut Pierre-Simon Laplace)
+
+tags:
+  - name: Search
+    description: Query datasets, files, and aggregations across the ESGF federation.
+  - name: Wget
+    description: Generate shell scripts for bulk file download.
+
+paths:
+
+  /search:
+    get:
+      operationId: searchRecords
+      summary: Search climate datasets, files, or aggregations
+      description: |
+        Executes a search query against the ESGF Solr index. If no parameters are
+        provided the service returns the first 10 **Dataset** records from across
+        the entire federation (`distrib=true`).
+
+        ### Facet constraints
+        Facet parameters (e.g. `project`, `model`, `experiment`, `variable`) are
+        **not** enumerated as fixed query parameters here because the available facets
+        vary by project and node. Supply them as additional query string parameters.
+
+        **OR within a facet** – repeat the parameter:
+        ```
+        ?variable=hus&variable=ta
+        ```
+        **AND across facets**:
+        ```
+        ?experiment=historical&variable=tas
+        ```
+        **Negation** – use `!=` (URL-encoded as `%21=`):
+        ```
+        ?model!=CCSM
+        ```
+
+        ### Lucene query syntax (the `query` parameter)
+        | Intent | Example |
+        |--------|---------|
+        | Match anywhere | `query=humidity` |
+        | Exact phrase | `query=%22specific%20humidity%22` |
+        | Field-scoped | `query=product:observations` |
+        | Boolean AND | `query=airs%20AND%20humidity` |
+        | Boolean OR | `query=airs%20OR%20humidity` |
+        | Wildcard id | `query=id:obs4MIPs.NASA-JPL.AIRS.*` |
+
+      tags:
+        - Search
+
+      parameters:
+        # ── Free-text ──────────────────────────────────────────────────────────
+        - $ref: '#/components/parameters/query'
+
+        # ── Record type ────────────────────────────────────────────────────────
+        - $ref: '#/components/parameters/type'
+
+        # ── Distribution ───────────────────────────────────────────────────────
+        - $ref: '#/components/parameters/distrib'
+        - $ref: '#/components/parameters/shards'
+
+        # ── Replicas & versions ────────────────────────────────────────────────
+        - $ref: '#/components/parameters/replica'
+        - $ref: '#/components/parameters/latest'
+        - $ref: '#/components/parameters/version'
+        - $ref: '#/components/parameters/min_version'
+        - $ref: '#/components/parameters/max_version'
+        - $ref: '#/components/parameters/retracted'
+        - $ref: '#/components/parameters/master_id'
+        - $ref: '#/components/parameters/instance_id'
+
+        # ── Temporal coverage ──────────────────────────────────────────────────
+        - $ref: '#/components/parameters/start'
+        - $ref: '#/components/parameters/end'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+
+        # ── Spatial coverage ───────────────────────────────────────────────────
+        - $ref: '#/components/parameters/bbox'
+
+        # ── Pagination ─────────────────────────────────────────────────────────
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+
+        # ── Output control ─────────────────────────────────────────────────────
+        - $ref: '#/components/parameters/facets'
+        - $ref: '#/components/parameters/format'
+
+      responses:
+        '200':
+          description: Successful search response in the requested format.
+          content:
+            application/solr+xml:
+              schema:
+                $ref: '#/components/schemas/SolrXmlResponse'
+              example: |
+                <?xml version="1.0" encoding="UTF-8"?>
+                <response>
+                  <lst name="responseHeader">
+                    <int name="status">0</int>
+                    <int name="QTime">42</int>
+                  </lst>
+                  <result name="response" numFound="12345" start="0">
+                    <doc>
+                      <str name="id">obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608|esgf-data.llnl.gov</str>
+                      <str name="master_id">obs4MIPs.NASA-JPL.TES.tro3.mon</str>
+                      <str name="instance_id">obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608</str>
+                      <str name="version">20110608</str>
+                      <str name="project">obs4MIPs</str>
+                    </doc>
+                  </result>
+                </response>
+            application/solr+json:
+              schema:
+                $ref: '#/components/schemas/SolrJsonResponse'
+              example:
+                responseHeader:
+                  status: 0
+                  QTime: 42
+                response:
+                  numFound: 12345
+                  start: 0
+                  docs:
+                    - id: "obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608|esgf-data.llnl.gov"
+                      master_id: "obs4MIPs.NASA-JPL.TES.tro3.mon"
+                      instance_id: "obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608"
+                      version: "20110608"
+                      project: ["obs4MIPs"]
+                      score: 1.0
+        '400':
+          description: Bad request – malformed query parameters.
+        '500':
+          description: Internal server error at the ESGF Index Node.
+
+  /wget:
+    get:
+      operationId: generateWgetScript
+      summary: Generate a wget shell script for bulk file download
+      description: |
+        Returns a self-contained **bash/wget shell script** that, when executed,
+        downloads all files matching the given search constraints. The endpoint
+        always operates on records of `type=File` (the `type` parameter is not
+        accepted here).
+
+        ### Workflow
+        1. Use `/search` to identify datasets or files of interest.
+        2. Replace `/search?` with `/wget?` in the URL to obtain the download script.
+        3. Execute the resulting shell script: `bash wget-<timestamp>.sh`.
+
+        ### Differences from `/search`
+        | Feature | `/search` | `/wget` |
+        |---------|-----------|---------|
+        | `type` parameter | Supported | **Not allowed** (always `File`) |
+        | `format` parameter | Supported | **Not allowed** (always returns a shell script) |
+        | Default `limit` | 10 | **1000** |
+        | Max `limit` | 10 000 | 10 000 |
+        | Extra parameter | – | `download_structure`, `download_emptypath` |
+
+      tags:
+        - Wget
+
+      parameters:
+        - $ref: '#/components/parameters/query'
+        - $ref: '#/components/parameters/distrib'
+        - $ref: '#/components/parameters/shards'
+        - $ref: '#/components/parameters/replica'
+        - $ref: '#/components/parameters/latest'
+        - $ref: '#/components/parameters/version'
+        - $ref: '#/components/parameters/min_version'
+        - $ref: '#/components/parameters/max_version'
+        - $ref: '#/components/parameters/retracted'
+        - $ref: '#/components/parameters/master_id'
+        - $ref: '#/components/parameters/instance_id'
+        - $ref: '#/components/parameters/start'
+        - $ref: '#/components/parameters/end'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/bbox'
+        - $ref: '#/components/parameters/facets'
+
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Maximum number of files to include in the wget script.
+            Default is **1000** (unlike `/search` which defaults to 10).
+            Maximum allowed value is 10 000.
+          schema:
+            type: integer
+            default: 1000
+            minimum: 1
+            maximum: 10000
+          example: 1000
+
+        - name: offset
+          in: query
+          required: false
+          description: Zero-based offset into the result set for pagination.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+          example: 0
+
+        - name: download_structure
+          in: query
+          required: false
+          description: |
+            Comma-separated list of **facet names** that define the relative
+            directory structure used when saving downloaded files.
+            Example: `project,product,institute,time_frequency` will organise
+            files under `<project>/<product>/<institute>/<time_frequency>/`.
+          schema:
+            type: string
+          example: "project,product,institute,time_frequency"
+
+        - name: download_emptypath
+          in: query
+          required: false
+          description: |
+            Specifies what to do when `download_structure` is set but the facet
+            has no value for a particular file (e.g. CMIP5 files mixed with
+            obs4MIPs files where one set lacks an `instrument` facet).
+          schema:
+            type: string
+          example: "replace"
+
+      responses:
+        '200':
+          description: A bash shell script for downloading the matching files.
+          content:
+            application/x-sh:
+              schema:
+                type: string
+                format: binary
+              example: |
+                #!/bin/bash
+                # ESGF wget script generated by esg-search
+                # Timestamp: 2024-01-15T10:30:00Z
+                declare -A CHECKSUM
+                CHECKSUM["tro3Stderr_TES_L3_tbd_200507-200912.nc"]="sha256:83df8ae9..."
+                ...
+        '400':
+          description: Bad request.
+        '500':
+          description: Internal server error.
+
+components:
+
+  parameters:
+
+    query:
+      name: query
+      in: query
+      required: false
+      description: |
+        Free-text search expression evaluated against **all** metadata fields.
+        Follows Apache Lucene query syntax. URL-encode special characters.
+
+        | Expression | Meaning |
+        |-----------|---------|
+        | `*` | Match everything (default) |
+        | `humidity` | Contains the word "humidity" |
+        | `"specific humidity"` | Exact phrase match |
+        | `product:observations` | Field-scoped match |
+        | `airs AND humidity` | Logical AND |
+        | `airs OR humidity` | Logical OR |
+        | `id:obs4MIPs.*` | Wildcard on the `id` field |
+      schema:
+        type: string
+        default: "*"
+      example: "humidity"
+
+    type:
+      name: type
+      in: query
+      required: false
+      description: |
+        The record type to search. Determines whether results are datasets,
+        individual files, or OPeNDAP aggregations.
+      schema:
+        type: string
+        enum: [Dataset, File, Aggregation]
+        default: Dataset
+      example: Dataset
+
+    distrib:
+      name: distrib
+      in: query
+      required: false
+      description: |
+        Controls whether the search is **distributed** across all ESGF federation
+        nodes (`true`) or limited to the **local** Index Node only (`false`).
+      schema:
+        type: boolean
+        default: true
+      example: true
+
+    shards:
+      name: shards
+      in: query
+      required: false
+      description: |
+        Comma-separated list of specific Solr shards to query, in the form
+        `hostname:port/solr`. Only relevant when `distrib=true`. If specified,
+        only the listed shards are queried instead of all federation nodes.
+        Ignored when `distrib=false`.
+      schema:
+        type: string
+      example: "pcmdi.llnl.gov/solr,esgf.ceda.ac.uk/solr"
+
+    replica:
+      name: replica
+      in: query
+      required: false
+      description: |
+        Filter by replica status:
+        - Omit to return **all** records (masters and replicas).
+        - `false` – return only **master** records (original data).
+        - `true`  – return only **replica** records.
+      schema:
+        type: boolean
+      example: false
+
+    latest:
+      name: latest
+      in: query
+      required: false
+      description: |
+        Filter by version currency:
+        - Omit to return **all** versions.
+        - `true`  – return only the **latest** version of each record.
+        - `false` – return only records **superseded** by a newer version.
+      schema:
+        type: boolean
+      example: true
+
+    version:
+      name: version
+      in: query
+      required: false
+      description: |
+        Return only records with this **exact** version string.
+        Versions are typically expressed as `YYYYMMDD` date strings for datasets
+        and as integers for files.
+      schema:
+        type: string
+      example: "20120712"
+
+    min_version:
+      name: min_version
+      in: query
+      required: false
+      description: |
+        Return only records with a version **greater than or equal to** this value.
+        Can be combined with `max_version` to specify a version/date range.
+        *(Feature not yet released in all nodes.)*
+      schema:
+        type: string
+      example: "20120101"
+
+    max_version:
+      name: max_version
+      in: query
+      required: false
+      description: |
+        Return only records with a version **less than or equal to** this value.
+        *(Feature not yet released in all nodes.)*
+      schema:
+        type: string
+      example: "20150101"
+
+    retracted:
+      name: retracted
+      in: query
+      required: false
+      description: |
+        Filter by retraction status. Retracted datasets have `retracted=true`
+        and `latest=false`. When using `latest=true` they are automatically
+        excluded. *(Feature not yet released in all nodes.)*
+      schema:
+        type: boolean
+      example: true
+
+    master_id:
+      name: master_id
+      in: query
+      required: false
+      description: |
+        Identifier that is **identical across all replicas and versions** of a
+        logical record. Use to retrieve both the master and all replicas of a
+        given dataset or file.
+      schema:
+        type: string
+      example: "cmip5.output1.LASG-CESS.FGOALS-g2.midHolocene.3hr.land.3hr.r1i1p1"
+
+    instance_id:
+      name: instance_id
+      in: query
+      required: false
+      description: |
+        Identifier that is **identical across all replicas of a given version**
+        but differs between versions. Useful to find all replicas of a specific
+        version without including other versions.
+      schema:
+        type: string
+      example: "obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608"
+
+    start:
+      name: start
+      in: query
+      required: false
+      description: |
+        Select records whose **temporal coverage overlaps** the specified range
+        by filtering on `datetime_stop >= start`. Accepts ISO 8601 UTC datetimes
+        (`YYYY-MM-DDTHH:MM:SSZ`) or Solr DateMath expressions (e.g. `NOW-1YEAR`).
+      schema:
+        type: string
+      example: "2000-01-01T00:00:00Z"
+
+    end:
+      name: end
+      in: query
+      required: false
+      description: |
+        Select records whose **temporal coverage overlaps** the specified range
+        by filtering on `datetime_start <= end`. Accepts ISO 8601 UTC datetimes
+        (`YYYY-MM-DDTHH:MM:SSZ`) or Solr DateMath expressions.
+      schema:
+        type: string
+      example: "2010-12-31T23:59:59Z"
+
+    from:
+      name: from
+      in: query
+      required: false
+      description: |
+        Select records **last modified on or after** this timestamp (filters on
+        the `timestamp` field). Accepts ISO 8601 UTC datetimes.
+      schema:
+        type: string
+        format: date-time
+      example: "2020-01-01T00:00:00Z"
+
+    to:
+      name: to
+      in: query
+      required: false
+      description: |
+        Select records **last modified on or before** this timestamp (filters on
+        the `timestamp` field). Accepts ISO 8601 UTC datetimes.
+      schema:
+        type: string
+        format: date-time
+      example: "2023-12-31T23:59:59Z"
+
+    bbox:
+      name: bbox
+      in: query
+      required: false
+      description: |
+        Bounding box for **spatial coverage** queries. The value must be a
+        URL-encoded JSON-style array: `[west, south, east, north]` with
+        decimal degree values. Only records that contain geo-spatial information
+        **and** whose coverage overlaps the box are returned.
+
+        Internally translates to:
+        `east_degrees >= west AND north_degrees >= south AND west_degrees <= east AND south_degrees <= north`
+      schema:
+        type: string
+        pattern: '^\[-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?\]$'
+      example: "[-10,-10,10,10]"
+
+    facets:
+      name: facets
+      in: query
+      required: false
+      description: |
+        Comma-separated list of **facets** to include in each result document. 
+        Skip to return all available facets.
+
+        Common facet names: `project`, `model`, `experiment`, `variable`,
+        `time_frequency`, `realm`, `institute`, `product`, `cf_standard_name`,
+        `data_node`, `index_node`.
+      schema:
+        type: string
+      example: "project,model,experiment"
+
+    limit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        Maximum number of records to return per page. Default is **10**.
+        Maximum allowed value is **10 000**.
+      schema:
+        type: integer
+        default: 10
+        minimum: 0
+        maximum: 10000
+      example: 10
+
+    offset:
+      name: offset
+      in: query
+      required: false
+      description: |
+        Zero-based index of the first record to return. Used together with
+        `limit` to paginate through result sets.
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+      example: 0
+
+    format:
+      name: format
+      in: query
+      required: false
+      description: |
+        Response serialisation format. Must be URL-encoded.
+
+        | Format | Value |
+        |--------|-------|
+        | Solr XML (default) | `application/solr+xml` |
+        | Solr JSON | `application/solr+json` |
+      schema:
+        type: string
+        enum:
+          - "application/solr+xml"
+          - "application/solr+json"
+        default: "application/solr+xml"
+      example: "application/solr+json"
+
+  schemas:
+
+    SolrJsonResponse:
+      type: object
+      description: Response envelope for Solr JSON format (`format=application/solr+json`).
+      properties:
+        responseHeader:
+          $ref: '#/components/schemas/ResponseHeader'
+        response:
+          $ref: '#/components/schemas/ResponseBody'
+        facet_counts:
+          $ref: '#/components/schemas/FacetCounts'
+
+    ResponseHeader:
+      type: object
+      description: Solr response header containing status and query metadata.
+      properties:
+        status:
+          type: integer
+          description: Solr status code (0 = success).
+          example: 0
+        QTime:
+          type: integer
+          description: Time taken to execute the query, in milliseconds.
+          example: 42
+        params:
+          type: object
+          description: Echo of the query parameters used.
+          additionalProperties:
+            type: string
+
+    ResponseBody:
+      type: object
+      description: The search result set.
+      properties:
+        numFound:
+          type: integer
+          description: Total number of records matching the query constraints.
+          example: 12345
+        start:
+          type: integer
+          description: Zero-based index of the first returned record.
+          example: 0
+        docs:
+          type: array
+          description: Array of matching record documents.
+          items:
+            $ref: '#/components/schemas/EsgfRecord'
+
+    EsgfRecord:
+      type: object
+      description: |
+        A single ESGF search result record (Dataset, File, or Aggregation).
+        The available fields depend on the `facets` parameter and the record type.
+        Fields marked as arrays may contain one or more values.
+      properties:
+        id:
+          type: string
+          description: |
+            Universally unique identifier for this record. Specific to the
+            dataset/file version **and** the data node storing it. Treat as opaque.
+          example: "obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608|esgf-data.llnl.gov"
+        master_id:
+          type: string
+          description: Same for master and all replicas across the federation.
+          example: "obs4MIPs.NASA-JPL.TES.tro3.mon"
+        instance_id:
+          type: string
+          description: Same for all replicas of a given version.
+          example: "obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608"
+        version:
+          type: string
+          description: Record version, usually in YYYYMMDD format for datasets.
+          example: "20110608"
+        replica:
+          type: boolean
+          description: True if this record is a replica; false if it is the master.
+          example: false
+        latest:
+          type: string
+          description: True if this is the latest version of the record.
+          example: "true"
+        retracted:
+          type: boolean
+          description: True if this dataset/file has been retracted.
+          example: false
+        project:
+          type: array
+          items:
+            type: string
+          description: Project(s) this record belongs to.
+          example: ["obs4MIPs"]
+        model:
+          type: array
+          items:
+            type: string
+          description: Climate model(s).
+          example: ["AIRS"]
+        experiment:
+          type: array
+          items:
+            type: string
+          description: Experiment identifier(s).
+          example: ["obs"]
+        variable:
+          type: array
+          items:
+            type: string
+          description: Variable short name(s).
+          example: ["tro3"]
+        cf_standard_name:
+          type: array
+          items:
+            type: string
+          description: CF Convention standard name(s).
+          example: ["mole_fraction_of_ozone_in_air"]
+        time_frequency:
+          type: array
+          items:
+            type: string
+          description: Temporal frequency (e.g. mon, day, 6hr).
+          example: ["mon"]
+        realm:
+          type: array
+          items:
+            type: string
+          description: Earth system realm (e.g. atmos, ocean, land).
+          example: ["atmos"]
+        institute:
+          type: array
+          items:
+            type: string
+          description: Producing institute.
+          example: ["NASA-JPL"]
+        data_node:
+          type: string
+          description: Hostname of the data node serving the files.
+          example: "esgf-data.llnl.gov"
+        index_node:
+          type: string
+          description: Hostname of the Index Node that indexed this record.
+          example: "esgf-node.llnl.gov"
+        size:
+          type: integer
+          format: int64
+          description: Total size of the dataset or file in bytes.
+          example: 104857600
+        number_of_files:
+          type: integer
+          description: Number of files in this dataset (Dataset records only).
+          example: 24
+        tracking_id:
+          type: string
+          description: Globally unique tracking identifier for a file.
+          example: "2209a0d0-9b77-4ecb-b2ab-b7ae412e7a3f"
+        checksum:
+          type: string
+          description: Checksum value for a file record.
+          example: "83df8ae93e85e26df797d5f770449470987a4ecd8f2d405159995b5cac9a410c"
+        checksum_type:
+          type: string
+          description: Algorithm used to compute the checksum.
+          example: "SHA256"
+        datetime_start:
+          type: string
+          format: date-time
+          description: Nominal start of the data temporal coverage.
+          example: "2005-07-01T00:00:00Z"
+        datetime_stop:
+          type: string
+          format: date-time
+          description: Nominal end of the data temporal coverage.
+          example: "2009-12-31T23:59:59Z"
+        timestamp:
+          type: string
+          format: date-time
+          description: Date and time when the record was last modified in the index.
+          example: "2023-04-12T08:30:00Z"
+        access:
+          type: array
+          description: |
+            Access URLs encoded as `url|mime_type|service_name` pipe-delimited tuples.
+
+            **Dataset services:** THREDDS, LAS
+            **File services:** HTTPServer, GridFTP, OPENDAP, Globus
+
+            Examples:
+            - `http://…/catalog.xml|application/xml+thredds|THREDDS`
+            - `http://…/file.nc|application/netcdf|HTTPServer`
+            - `gsiftp://…/file.nc|application/gridftp|GridFTP`
+            - `http://…/file.nc.html|application/opendap-html|OPENDAP`
+            - `globus:<endpoint-uuid>/…/file.nc|Globus|Globus`
+          items:
+            type: string
+            pattern: '^.+\|.+\|.+$'
+          example:
+            - "http://esgf-data.llnl.gov/thredds/catalog/esgcet/1/obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608.xml#obs4MIPs.NASA-JPL.TES.tro3.mon.v20110608|application/xml+thredds|THREDDS"
+        score:
+          type: number
+          format: float
+          description: Lucene relevance score. Always included.
+          example: 1.0
+      additionalProperties:
+        description: |
+          Additional project-specific facet fields (e.g. `ensemble`, `cmor_table`,
+          `driving_model`, `rcm_name`, etc.) depending on the project.
+
+    FacetCounts:
+      type: object
+      description: Facet counts returned when the `facets` parameter is specified.
+      properties:
+        facet_fields:
+          type: object
+          description: |
+            A map of facet name → alternating [value, count] flat array.
+            Values are sorted alphabetically; only values with count ≥ 1 are returned.
+          additionalProperties:
+            type: array
+            items: {}
+          example:
+            project:
+              - "CMIP5"
+              - 54321
+              - "obs4MIPs"
+              - 1234
+            model:
+              - "AIRS"
+              - 42
+              - "HadCM3"
+              - 1800
+
+    SolrXmlResponse:
+      type: object
+      description: |
+        Solr XML response document (default format). The structure mirrors
+        `SolrJsonResponse` but serialised as Solr's native XML format.
+        See the Solr documentation for the full schema.
+      xml:
+        name: response
